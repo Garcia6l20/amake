@@ -28,7 +28,6 @@ from dan.core.terminal import TerminalMode, TermStream, set_mode as set_terminal
 from dan.core.utils import Environment, flatten
 
 
-
 @dataclass_json
 @dataclass
 class Config:
@@ -144,7 +143,7 @@ class Make(logging.Logging):
         jobs: int = None,
         terminal_mode: TerminalMode = None,
         diags=False,
-        contexts: list[str]=None,
+        contexts: list[str] = None,
         all=False,
         quiet=False,
     ):
@@ -204,15 +203,17 @@ class Make(logging.Logging):
             contexts = self.config.settings.keys()
         elif not contexts:
             contexts = [self.config.current_context]
-        
+
         self.contexts: IndexList[Context] = IndexList()
         for context_name in contexts:
             if context_name in self.config.settings:
-                self.contexts.append(Context(context_name, self.config.settings[context_name]))
+                self.contexts.append(
+                    Context(context_name, self.config.settings[context_name])
+                )
 
     def context(self, name: str = None) -> Context:
         if name is None:
-            assert len(self.contexts) == 1, 'context must be specified'
+            assert len(self.contexts) == 1, "context must be specified"
             return self.contexts[0]
         return self.contexts[name]
 
@@ -227,31 +228,31 @@ class Make(logging.Logging):
     @property
     def source_path(self):
         return Path(self.config.source_path)
-    
+
     @property
     def toolchain(self):
-        assert len(self.contexts) == 1, 'Only available in single-context mode'
-        return self.contexts[0].get('cxx_toolchain')
-
+        assert len(self.contexts) == 1, "Only available in single-context mode"
+        return self.contexts[0].get("cxx_toolchain")
 
     @property
     def env(self) -> dict[str, str]:
         from dan.cxx.detect import get_dan_path
 
         env = Environment(self.toolchain.env)
-        paths = [str(get_dan_path() / 'os-utils' / 'bin')]
+        paths = [str(get_dan_path() / "os-utils" / "bin")]
         for t in self.executable_targets:
             parts = t.env.get("PATH", os.environ["PATH"]).split(os.pathsep)
             paths.extend(parts)
         env.path_prepend(*paths)
         return env
-    
+
     async def project_config(self):
         from dan.core.config import load_project_config, ConfigContext
 
         project_config = load_project_config(self.source_path)
 
         from dan.core.toolchains import BaseToolchain
+
         toolchain_classes = BaseToolchain.load_all()
 
         # fake_cache = dict()
@@ -268,9 +269,8 @@ class Make(logging.Logging):
                 if ctx.try_configure(toolchain, settings):
                     ctx.accepted_toolchains.append((toolchain, settings))
             contexts.append(ctx)
-    
-        return contexts
 
+        return contexts
 
     async def configure(self, context: str = None, toolchain: str = None):
         self.info("source path: %s", self.config.source_path)
@@ -288,6 +288,7 @@ class Make(logging.Logging):
         if context not in self.contexts:
             if settings.config is None:
                 from dan.core.toolchains import BaseToolchain
+
                 toolchain_classes = BaseToolchain.load_all()
                 for ToolchainClass in toolchain_classes:
                     if ToolchainClass.name == settings.toolchain:
@@ -302,12 +303,14 @@ class Make(logging.Logging):
 
         self.debug(f"source path: {self.source_path}")
         self.debug(f"build path: {self.build_path}")
-        
+
         for ctx in self.contexts:
 
             toolchain = init_toolchain(ctx)
-        
-            self.info(f"{ctx.name}: using '{toolchain.name}' toolchain in '{toolchain.build_type.name}' mode")
+
+            self.info(
+                f"{ctx.name}: using '{toolchain.name}' toolchain in '{toolchain.build_type.name}' mode"
+            )
 
             with ctx:
                 try:
@@ -316,10 +319,10 @@ class Make(logging.Logging):
                     self._diagnostics.update(gen_python_diags(err))
                     raise
 
-    def __matches(self, target: Target | Test, ctx : Context):
+    def __matches(self, target: Target | Test, ctx: Context):
         for required in self.required_targets:
-            if '/' in required:
-                ctx_name, required = required.split('/')
+            if "/" in required:
+                ctx_name, required = required.split("/")
             else:
                 ctx_name = None
             if ctx_name and ctx_name != ctx.name:
@@ -327,6 +330,14 @@ class Make(logging.Logging):
             if fnmatch.fnmatch(target.fullname, f"*{required}*"):
                 return True
         return False
+
+    def makefiles(self, context=None) -> list[Target]:
+        items = set()
+        contexts = [self.context(context)] if context is not None else self.contexts
+        for ctx in contexts:
+            items.add(ctx.root)
+            items.update(ctx.all_makefiles)
+        return list(items)
 
     def targets(self, context=None) -> list[Target]:
         items = list()
@@ -352,7 +363,7 @@ class Make(logging.Logging):
                 else:
                     test_name = required
                     test_case = None
-                
+
                 for ctx in self.contexts:
                     for test in ctx.root.all_tests:
                         if fnmatch.fnmatch(test.fullname, f"*{test_name}*"):
@@ -648,7 +659,7 @@ class Make(logging.Logging):
         tests = self.tests
         if len(tests) == 0:
             self.error("No test selected")
-            return 255        
+            return 255
 
         async with self.term.task_group("testing...") as g:
             for test in tests:

@@ -2,6 +2,7 @@ from fnmatch import fnmatch
 import os
 import sys
 import contextlib
+import json
 
 from dan import logging
 
@@ -556,7 +557,6 @@ async def get_targets(ctx: CommandsContext, **kwargs):
                     'env': target.env if isinstance(target, Executable) else None,
                 })
             # with bench('json-dump'):
-        import json
         click.echo(json.dumps(out))
     # report_all()
 
@@ -567,7 +567,6 @@ async def get_targets(ctx: CommandsContext, **kwargs):
 async def get_tests(ctx: CommandsContext, **kwargs):
     kwargs.update({'quiet': True, 'diags': True, 'no_status': True})
     async with ctx(**kwargs) as make:
-        import json
         out = list()
         for t in make.context().root.all_tests:
             out.append(t.fullname)
@@ -591,8 +590,16 @@ async def get_test_suites(ctx: CommandsContext, pretty, **kwargs):
 
 @code.command()
 def get_toolchains(**kwargs):
-    import json
     click.echo(json.dumps(list(Make.toolchains()['toolchains'].keys())))
+
+@code.command()
+@common_opts
+@pass_context
+async def get_buildfiles(ctx: CommandsContext, **kwargs):
+    kwargs.update({'quiet': True, 'diags': True, 'no_status': True})
+    async with ctx(**kwargs) as make:
+        builfiles = [f.__file__ for f in make.makefiles()]        
+        click.echo(json.dumps(builfiles))
 
 
 @code.command()
@@ -640,7 +647,6 @@ async def get_workspace_browse_configuration(ctx: CommandsContext, **kwargs):
 async def get_options(ctx: CommandsContext, context, **kwargs):
     """List options"""
     kwargs.update({'quiet': True, 'diags': True, 'no_status': True, 'contexts': [context]})
-    import json
     async with ctx(**kwargs) as make:
         opts = list()
         for o in make.all_options():
