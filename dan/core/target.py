@@ -490,11 +490,11 @@ class Target(Logging, MakefileRegister, internal=True):
             self.preload_dependencies.add(self.source_path, public=False)
             type(self).source_path = property(functools.partial(_get_source_path, self.source_path))
 
-        if type(self).output != Target.output:
-            # hack class-defined output
-            #   transform it to classproperty for build_path resolution
-            output = self.output
-            type(self).output = utils.classproperty(lambda: self.build_path / output)
+        # if type(self).output != Target.output:
+        #     # hack class-defined output
+        #     #   transform it to classproperty for build_path resolution
+        #     output = self.output
+        #     type(self).output = utils.classproperty(lambda: self.build_path / output)
 
         self.diagnostics = diags.DiagnosticCollection()
 
@@ -701,6 +701,8 @@ class Target(Logging, MakefileRegister, internal=True):
             if diags.enabled:
                 self.diagnostics.clear()
             try:
+                if self.output is not None:
+                    self.output.parent.mkdir(exist_ok=True, parents=True)
                 result = await asyncio.may_await(self.__build__())
                 if self.output is None:
                     (self.build_path / f'{self.name}.stamp').touch()

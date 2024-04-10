@@ -7,6 +7,13 @@ catch2, = requires('catch2 = 3')
 
 cpp_std = 17
 
+class TestFmt(Executable):
+    name = 'test-fmt'
+    sources = 'test_fmt.cpp'
+    dependencies = [
+        'fmt = 9',
+    ]
+
 @catch2.discover_tests
 class UseCatch2(Executable):
     name = 'catch2-example'

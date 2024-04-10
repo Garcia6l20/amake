@@ -12,7 +12,7 @@ from dan.core.target import Target, Installer, InstallMode
 from dan.core.utils import Environment, chunks, unique
 from dan.core.runners import async_run
 from dan.core import asyncio
-from dan.cxx.base_toolchain import CompilationFailure, LibraryList, LinkageFailure, Toolchain, CppStd, BuildType
+from dan.cxx.base_toolchain import CompilationFailure, LibraryList, LinkageFailure, Toolchain, CppStd, BuildType, DefaultLibraryType
 from dan.core.cache import cached_property as dan_cached
 
 import copy
@@ -111,7 +111,7 @@ class CXXObject(BaseTarget, internal=True):
         self.info('generating %s...', self.output.name)
         try:
             self.output.parent.mkdir(parents=True, exist_ok=True)
-            commands, diags = await self.toolchain.compile(self.source_path / self.source, self.output, self.private_cxx_flags, self.build_type)
+            commands, diags = await self.toolchain.compile(self.source_path / self.source, self.output, self.private_cxx_flags, self.build_path, self.build_type)
             self.parent.diagnostics.insert(diags, str(self.source))
         except CompilationFailure as err:
             self.parent.diagnostics.insert(err.diags, str(self.source))
@@ -472,6 +472,29 @@ class Library(CXXObjectsTarget, internal=True):
         
         return libs
     
+    @property
+    def output(self):
+        if self._output is None:
+            return None
+        
+        output_dir = None
+        
+        match self.library_type:
+            
+            case LibraryType.SHARED:
+                if self.toolchain.system.is_windows:
+                    output_dir = self.toolchain.settings.executable_output_dir 
+                else:
+                    output_dir = self.toolchain.settings.library_output_dir
+                
+            case LibraryType.STATIC:
+                output_dir = self.toolchain.settings.archive_output_dir
+
+        if output_dir is not None:
+            return self.makefile.root.build_path / output_dir / self._output
+        
+        return super().output
+    
     def __make_link_options(self):
         return [*self.lib_paths, *self.libs, *self.link_options.public, *self.link_options.private]
 
@@ -483,7 +506,6 @@ class Library(CXXObjectsTarget, internal=True):
             if len(self.sources) == 0:
                 self.library_type = LibraryType.INTERFACE
             else:
-                from dan.core.settings import DefaultLibraryType
                 if self.toolchain.settings.default_library_type == DefaultLibraryType.static:
                     self.library_type = LibraryType.STATIC
                 else:
@@ -494,9 +516,9 @@ class Library(CXXObjectsTarget, internal=True):
             self.compile_definitions.add(f'{self.name.upper()}_EXPORT=1')
 
         if self.library_type != LibraryType.INTERFACE:
-            self.output = self.toolchain.make_library_name(self.name, self.shared)
+            self._output = self.toolchain.make_library_name(self.name, self.shared)
         else:
-            self.output = f"lib{self.name}.stamp"
+            self._output = f"lib{self.name}.stamp"
         await super().__initialize__()
 
         previous_args = self.cache.get('generate_args')
@@ -529,9 +551,9 @@ class Library(CXXObjectsTarget, internal=True):
             'creating %s library %s...', self.library_type.name.lower(), self.output.name)
 
         if self.static:
-            await self.toolchain.static_lib([obj.routput for obj in self.objs], self.output, self.__make_link_options())
+            await self.toolchain.static_lib([obj.routput for obj in self.objs], self.output, self.__make_link_options(), cwd=self.build_path)
         elif self.shared:
-            await self.toolchain.shared_lib([obj.routput for obj in self.objs], self.output, self.__make_link_options())
+            await self.toolchain.shared_lib([obj.routput for obj in self.objs], self.output, self.__make_link_options(), cwd=self.build_path)
             from .msvc_toolchain import MSVCToolchain
             if isinstance(self.toolchain, MSVCToolchain):
                 self.compile_definitions.add(
@@ -604,7 +626,7 @@ class Executable(CXXObjectsTarget, internal=True):
         if self.subsystem is None:
             self.subsystem = 'console'
 
-        self.output = self.toolchain.make_executable_name(self.name)
+        self._output = self.toolchain.make_executable_name(self.name)
         self.__dirty = False
 
     def _make_link_options(self):
@@ -612,6 +634,14 @@ class Executable(CXXObjectsTarget, internal=True):
         if self.toolchain.type == 'msvc':
             subsystem_opt.append(f'/subsystem:{self.subsystem}')
         return [*subsystem_opt, *self.lib_paths, *self.libs, *self.link_options.public, *self.link_options.private]
+
+    @property
+    def output(self):
+        if self._output is None:
+            return None
+        if self.toolchain.settings.executable_output_dir is not None:
+            return self.makefile.root.build_path / self.toolchain.settings.executable_output_dir / self._output
+        return super().output
 
     @cached_property
     def env(self):
@@ -653,7 +683,7 @@ class Executable(CXXObjectsTarget, internal=True):
         self.info('linking %s...', self.output.name)
         try:
             commands, diags = await self.toolchain.link([obj.routput for obj in self.objs], self.output,
-                                                        self._make_link_options())
+                                                        self._make_link_options(), cwd=self.build_path)
             self.diagnostics.insert(diags, str(self.output))
         except LinkageFailure as err:
             self.diagnostics.insert(err.diags, str(self.output))

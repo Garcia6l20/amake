@@ -22,10 +22,6 @@ class BuildType(str, Enum):
     def is_debug_mode(self):
         """Return true if the build type should produce debug symbols (ie.: debug and release_debug_infos)"""
         return self in (BuildType.debug, BuildType.release_debug_infos)
-    
-class DefaultLibraryType(str, Enum):
-    static = 'static'
-    shared = 'shared'
 
 @dataclass(eq=True, unsafe_hash=True)
 class InstallSettings:
@@ -51,17 +47,6 @@ class InstallSettings:
     @property
     def includes_destination(self):
         return Path(self.destination).absolute() / self.includes_prefix
-
-@dataclass(eq=True, unsafe_hash=True)
-class ToolchainSettings:
-    build_type: BuildType = BuildType.debug
-    compile_flags: list[str] = field(default_factory=lambda: list(), compare=False)
-    link_flags: list[str] = field(default_factory=lambda: list(), compare=False)
-    default_library_type: DefaultLibraryType = DefaultLibraryType.static
-    executable_extension: t.Optional[str] = None
-    archive_extension: t.Optional[str] = None
-    library_extension: t.Optional[str] = None
-    position_independent_code: bool = True
 
 @dataclass(eq=True, unsafe_hash=True)
 class BuildSettings:

@@ -1,13 +1,15 @@
 from enum import Enum
 import dan.core.diagnostics as diag
 from dan.core.pathlib import Path
-from dan.core.settings import BuildType, ToolchainSettings
+from dan.core.settings import BuildType
 from dan.core.target import FileDependency
 from dan.core.runners import async_run, sync_run, CommandError
 from dan.core.version import Version
 from dan.logging import Logging
 from dan.cxx.compile_commands import CompileCommands
 from dan.core.toolchains import BaseToolchain, Lang
+
+from dataclasses import dataclass, field
 
 import dan.core.typing as t
 
@@ -19,6 +21,24 @@ CommandArgsList = list[CommandArgs]
 class RuntimeType(Enum):
     static = 0
     dynamic = 1
+
+class DefaultLibraryType(str, Enum):
+    static = 'static'
+    shared = 'shared'
+
+@dataclass(eq=True, unsafe_hash=True)
+class ToolchainSettings:
+    build_type: BuildType = BuildType.debug
+    compile_flags: list[str] = field(default_factory=lambda: list(), compare=False)
+    link_flags: list[str] = field(default_factory=lambda: list(), compare=False)
+    default_library_type: DefaultLibraryType = DefaultLibraryType.static
+    executable_extension: t.Optional[str] = None
+    archive_extension: t.Optional[str] = None
+    library_extension: t.Optional[str] = None
+    position_independent_code: bool = True
+    executable_output_dir: t.Optional[str] = "bin"
+    archive_output_dir: t.Optional[str] = "lib"
+    library_output_dir: t.Optional[str] = "lib"
 
 class CppStd:
     def __init__(self, stdver: int|str) -> None:
@@ -252,7 +272,7 @@ class Toolchain(BaseToolchain, Logging):
         """Convert flags from target-compiler-style to unix-style"""
         return flags
 
-    async def compile(self, sourcefile: Path, output: Path, options: list[str], build_type=None, **kwds):
+    async def compile(self, sourcefile: Path, output: Path, options: list[str], cwd: Path, build_type=None, **kwds):
         commands = self.make_compile_commands(sourcefile, output, options, build_type)
         diags = []
         if diag.enabled:
@@ -263,7 +283,7 @@ class Toolchain(BaseToolchain, Logging):
             kwds['all_capture'] = capture
         for index, command in enumerate(commands):
             try:
-                await self.run(f'compile{index}', output, command, **kwds, cwd=output.parent)
+                await self.run(f'compile{index}', output, command, **kwds, cwd=cwd)
             except CommandError as err:
                 raise CompilationFailure(err, sourcefile, options, command, self, diags) from None
         return commands, diags
@@ -271,7 +291,7 @@ class Toolchain(BaseToolchain, Logging):
     def make_link_commands(self, objects: set[Path], output: Path, options: list[str]) -> CommandArgsList:
         raise NotImplementedError()
 
-    async def link(self, objects: set[Path], output: Path, options: list[str], **kwds):
+    async def link(self, objects: set[Path], output: Path, options: list[str], cwd: Path, **kwds):
         commands = self.make_link_commands(objects, output, options)
         diags = []
         if diag.enabled:
@@ -282,7 +302,7 @@ class Toolchain(BaseToolchain, Logging):
             kwds['all_capture'] = capture
         for index, command in enumerate(commands):
             try:
-                await self.run(f'link{index}', output, command, **kwds, cwd=output.parent)
+                await self.run(f'link{index}', output, command, **kwds, cwd=cwd)
             except CommandError as err:
                 raise LinkageFailure(err, objects, options, command, self, diags) from None
         return commands, diags
@@ -290,11 +310,11 @@ class Toolchain(BaseToolchain, Logging):
     def make_static_lib_commands(self, objects: set[Path], output: Path, options: set[str]) -> CommandArgsList:
         raise NotImplementedError()
 
-    async def static_lib(self, objects: set[Path], output: Path, options: set[str], **kwds):
+    async def static_lib(self, objects: set[Path], output: Path, options: set[str], cwd: Path, **kwds):
         commands = self.make_static_lib_commands(objects, output, options)
         for index, command in enumerate(commands):
             try:
-                await self.run(f'static_lib{index}', output, command, **kwds, cwd=output.parent)
+                await self.run(f'static_lib{index}', output, command, **kwds, cwd=cwd)
             except CommandError as err:
                 raise LinkageFailure(err, objects, options, command, self) from None
         return commands
@@ -302,10 +322,10 @@ class Toolchain(BaseToolchain, Logging):
     def make_shared_lib_commands(self, objects: set[Path], output: Path, options: set[str]) -> tuple[Path, CommandArgsList]:
         raise NotImplementedError()
 
-    async def shared_lib(self, objects: set[Path], output: Path, options: set[str], **kwds):
+    async def shared_lib(self, objects: set[Path], output: Path, options: set[str], cwd: Path, **kwds):
         commands = self.make_shared_lib_commands(objects, output, options)
         for index, command in enumerate(commands):
-            await self.run(f'shared_lib{index}', output, command, **kwds, cwd=output.parent)
+            await self.run(f'shared_lib{index}', output, command, **kwds, cwd=cwd)
         return commands
 
     async def run(self, name: str, output: Path, args, quiet=False, **kwds) -> tuple[str, str, int]:

@@ -3,7 +3,7 @@ from dan.core.pathlib import Path
 
 from dan.cxx.unix_toolchain import UnixToolchain
 from dan.cxx.detect import Compiler, create_toolchain
-from dan.core.settings import ToolchainSettings
+from dan.cxx.base_toolchain import ToolchainSettings
 
 import os
 
