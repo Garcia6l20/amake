@@ -131,7 +131,10 @@ class Data:
             self._requires = list()
             reqs = self.get('requires')
             if reqs is not None:
-                self._requires = parse_package_requires(reqs)
+                self._requires.extend(parse_package_requires(reqs))
+            reqs = self.get('requires.private')
+            if reqs is not None:
+                self._requires.extend(parse_package_requires(reqs))
         return self._requires
     
     @property
